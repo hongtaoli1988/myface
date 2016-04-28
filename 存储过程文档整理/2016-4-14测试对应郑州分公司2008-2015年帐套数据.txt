@@ -1,0 +1,83 @@
+
+---------每天,部门,科目 按天统计事例郑州分公司
+---------第一步:插入表MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY数据
+---------此存储过程需要注意的是视图V_SEARCH_SUB_PAY_NEW --确保视图查询的是所有合同状态为0的合同,不能剔除税金
+insert into MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY (PAY_TIME,SUBJECT_ID,SUBJECT_NAME,DEP_NAME,MONEY_ADD,COM_NAME,CONTRACT_CODE,MONEY_SUM,CN_CUSTOMER_NAME,CON_START_TIME,CON_END_TIME)
+select left(convert(varchar(20),vison.PAY_TIME,120),10) as PAY_TIME,SUB.SUBJECT_ID,SUB.SUBJECT_NAME,
+	 case when vison.DEP_NAME like '客户_部' then '客户部'
+			when vison.DEP_NAME='客服部' then '客服部'	
+			when vison.DEP_NAME='续费部' then '续费部'
+			when vison.DEP_NAME like '金融_部' then '金融部'
+			else '其他' end as DEP_NAME,
+			vison.MONEY_ADD,vison.COM_NAME ,vison.CONTRACT_CODE,vison.MONEY_SUM,
+      cus.CN_CUSTOMER_NAME,
+      busi.CON_START_TIME,busi.CON_END_TIME
+from MO_SUBJECT_INFO SUB
+join V_SEARCH_SUB_PAY_NEW vison on SUB.SUBJECT_ID = vison.SUBJECT_ID
+join MO_CON_PRO_BUSINESS_INFO busi on vison.CON_PRO_ID = busi.CON_PRO_ID and busi.SOURCE = 2
+join MO_CUSTOMER_INFO cus on vison.C_ID = cus.C_ID
+		where  vison.PAY_TYPE <> '4' and vison.COM_ID = '41'
+		--and vison.PAY_TIME between '2014-1-1' and '2014-12-31'
+--truncate table MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY
+--select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY where COM_NAME = '郑州分公司'
+---------------
+---第二步:编写存储过程 组合部门产品每天 具体对应的合同,客户,签单金额,开始及结束时间
+-------------------------------
+--P_MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_DETAIL_FINAL_20151013 '','' 处理某个公司所有某个年份的对应关系	
+exec P_MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_DETAIL_FINAL_20151013 '郑州分公司'
+--select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_PINGJIE_20151013 where COM_NAME = '郑州分公司'
+--truncate table MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_PINGJIE_20151013
+所得结果存入数据表中MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_PINGJIE_20151013
+
+-----执行下面语句得到最终需要核对的数据
+insert into dbo.MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_FINAL_20151013(PAY_TIME,SUBJECT_NAME,
+DEP_NAME,MONEY_ADD,COM_NAME,CONTRACT_CODE,MONEY_ADD_EVERY,MONEY_SUM,CN_CUSTOMER_NAME,CON_START_TIME,CON_END_TIME,IF_HEDUI)			
+select cast(everyGroup.PAY_TIME as datetime) as PAY_TIME,everyGroup.SUBJECT_NAME,everyGroup.DEP_NAME,everyGroup.MONEY_ADD,
+everyGroup.COM_NAME,detail.CONTRACT_CODE,detail.MONEY_ADD,detail.MONEY_SUM,detail.CN_CUSTOMER_NAME,
+detail.CON_START_TIME,detail.CON_END_TIME,0 as IF_HEDUI
+ from (
+	select temp001.PAY_TIME,temp001.SUBJECT_ID,temp001.SUBJECT_NAME,temp001.DEP_NAME,sum(temp001.MONEY_ADD) as MONEY_ADD,temp001.COM_NAME
+	from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY temp001 where temp001.COM_NAME = '郑州分公司'
+	group by temp001.PAY_TIME,temp001.SUBJECT_ID,temp001.SUBJECT_NAME,temp001.DEP_NAME,temp001.COM_NAME ) everyGroup
+	join MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_PINGJIE_20151013 detail on everyGroup.COM_NAME = detail.COM_NAME
+	and everyGroup.SUBJECT_ID =detail.SUBJECT_ID and everyGroup.PAY_TIME = detail.PAY_TIME
+	and everyGroup.DEP_NAME = detail.DEP_NAME
+	order by everyGroup.PAY_TIME
+--select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_FINAL_20151013	 where COM_NAME = '郑州分公司'
+--truncate table MO_CUS_PAY_INFO_HEDUI_BY_EVERY_DAY_FINAL_20151013
+
+
+
+
+------将excel表中的数据倒入数据库中
+
+--清空表中数据
+truncate table dbo.MO_CAIWU_DATA_EVERY_DAY_TEMP
+--查询临时表中是否有数据
+select * from dbo.MO_CAIWU_DATA_EVERY_DAY_TEMP
+select * from dbo.MO_CAIWU_DATA_EVERY_DAY where FLAG = '0'
+update MO_CAIWU_DATA_EVERY_DAY set FLAG = '0' where COM_ID = '41'
+--truncate table dbo.MO_CAIWU_DATA_EVERY_DAY
+--truncate table MO_CAIWU_DATA_EVERY_DAY
+insert into dbo.MO_CAIWU_DATA_EVERY_DAY (COM_ID,COM_NAME,YR,MO,DAY,PING_ZHENG,ZHAIYAO,
+MONEY,CN_CUSTOMER_NAME,CONTRACT_CODE,DISCOUNT_MONEY,CON_START_TIME,CON_END_TIME,FLAG)
+select * from dbo.MO_CAIWU_DATA_EVERY_DAY_TEMP order by YR,MO
+
+--查询新倒入的数据
+--1--核对成功 2--核对失败
+select * from dbo.MO_CAIWU_DATA_EVERY_DAY where FLAG = '1'
+select * from dbo.MO_CAIWU_DATA_EVERY_DAY where FLAG = '2'
+
+--select * from MO_CUS_PAY_INFO_HEDUI where IF_HEDUI = '1'
+--执行新导入公司
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2008-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2009-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2010-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2011-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2012-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2013-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2014-1-1'
+exec dbo.P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_DAY_20160414 '郑州分公司','2015-1-1'
+
+
+select * from MO_CAIWU_DATA_EVERY_DAY where COM_NAME = '郑州分公司' and FLAG = '2'

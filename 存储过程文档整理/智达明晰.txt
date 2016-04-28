@@ -1,0 +1,183 @@
+-------- MO_CON_PRO_BUSINESS_INFO表中缺少的数据
+ insert into MO_CON_PRO_BUSINESS_INFO
+ select pro.CON_PRO_ID,temp.CONTRACT_CODE,con.CREATE_TIME,
+ case when TIME_UNIT = 'A' then con.CREATE_TIME 
+	  when TIME_UNIT = 'B' then DATEADD(yy,ABS(pro.NUM),con.CREATE_TIME)
+      when TIME_UNIT = 'C' then DATEADD(MONTH,ABS(pro.NUM*6),con.CREATE_TIME)
+      when TIME_UNIT = 'D' then DATEADD(MONTH,ABS(pro.NUM*3),con.CREATE_TIME)
+      when TIME_UNIT = 'E' then DATEADD(MONTH,ABS(pro.NUM),con.CREATE_TIME)
+      when TIME_UNIT = 'F' then DATEADD(day,ABS(pro.NUM),con.CREATE_TIME)
+      end as CONTRACT_END_TIME,
+      null,null,GETDATE(), pro.ISPAY,null,'2',null,null,null,'1'
+   from (
+ select CONTRACT_CODE from #temp3
+ where #temp3.CONTRACT_CODE not in (select CONTRACT_CODE from 
+ MO_CON_PRO_BUSINESS_INFO where SOURCE = '2' group by CONTRACT_CODE)
+ and MONEY_PAY>0 )temp 
+ join MO_CONTRACT_INFO con on temp.CONTRACT_CODE = con.CONTRACT_CODE
+ join MO_CON_PRO_INFO pro on con.CONTRACT_ID = pro.CON_PRO_ID
+ join MO_PRODUCT_SPEC_INFO spec on pro.PRODUCT_SPEC_ID = spec.PRODUCT_SPEC_ID
+ -----------------------------------------------------------------------------
+/*
+select con.CONTRACT_CODE,SUM(cus_pay.MONEY_ADD) MONEY_ADD
+into #temp from MO_CON_PRO_INFO pro
+join MO_CONTRACT_INFO con on pro.CONTRACT_ID = con.CONTRACT_ID
+join V_SEARCH_SUB_PAY_NEW cus_pay on pro.CON_PRO_ID = cus_pay.CON_PRO_ID
+join MO_CUSTOMER_INFO cus on con.C_ID = cus.C_ID
+where  cus_pay.PAY_TYPE <> '4' and cus_pay.COM_NAME like   '%分公司'
+and cus_pay.PAY_TIME >='2015-1-1' and cus_pay.PAY_TIME <'2015-6-1' 
+group by con.CONTRACT_CODE
+
+
+select kind.PRODUCT_KIND_NAME,SUM(cus_pay.MONEY_ADD) MONEY_SUM from MO_CON_PRO_INFO  pro
+join V_SEARCH_SUB_PAY_NEW cus_pay on pro.CON_PRO_ID = cus_pay.CON_PRO_ID
+join MO_PRODUCT_SPEC_INFO spec on pro.PRODUCT_SPEC_ID = spec.PRODUCT_SPEC_ID
+join MO_PRODUCT_TYPE_INFO proty on spec.PRODUCT_TYPE_ID = proty.PRODUCT_TYPE_ID
+join MO_PRODUCT_INFO product on proty.PRODUCT_ID = product.PRODUCT_ID
+join MO_PRODUCT_KIND_INFO kind on product.PRODUCT_KIND_ID = kind.PRODUCT_KIND_ID
+where  cus_pay.PAY_TYPE <> '4' and cus_pay.COM_NAME like   '%分公司'
+and cus_pay.PAY_TIME >='2015-1-1' and cus_pay.PAY_TIME <'2015-6-1' 
+group by kind.PRODUCT_KIND_NAME
+
+
+select PRODUCT_NAME from MO_PRODUCT_INFO group by PRODUCT_NAME
+select PRODUCT_KIND_NAME from MO_PRODUCT_KIND_INFO group by PRODUCT_KIND_NAME
+select PRODUCT_CODE from MO_PRODUCT_SPEC_INFO group by PRODUCT_CODE
+select PRODUCT_TYPE_NAME from MO_PRODUCT_TYPE_INFO group by PRODUCT_TYPE_NAME 
+select top 1 * from MO_CON_PRO_INFO 
+select top 1 * from MO_PRODUCT_INFO 
+select top 1 * from MO_PRODUCT_KIND_INFO 
+select top 1 * from MO_PRODUCT_SPEC_INFO 
+select top 1 * from MO_PRODUCT_TYPE_INFO 
+*/
+--------------------------------------------------------------
+--统计所有分公司每年的实际到帐
+--此算法需要注意的地方V_SEARCH_SUB_PAY_NEW --确保视图查询的是剔除税金的合同
+select YR,SUM(MONEY_ADD) MONEY_ADD from (
+select convert(varchar(4),cus_pay.PAY_TIME,120) YR,cus_pay.MONEY_ADD
+from MO_CON_PRO_INFO pro
+join MO_CONTRACT_INFO con on pro.CONTRACT_ID = con.CONTRACT_ID
+join V_SEARCH_SUB_PAY_NEW cus_pay on pro.CON_PRO_ID = cus_pay.CON_PRO_ID
+join MO_CUSTOMER_INFO cus on con.C_ID = cus.C_ID
+where  cus_pay.PAY_TYPE <> '4' and cus_pay.COM_NAME like   '%分公司'
+and cus_pay.PAY_TIME >='2008-1-1' and cus_pay.PAY_TIME <'2015-9-30' ) temp
+group by temp.YR
+order by temp.YR
+--第一步计算 合同及合同实际到帐金额
+drop table #temp1
+drop table #temp2
+drop table #temp3
+drop table #temp4
+drop table #temp003003
+drop table #temp003004
+drop table #temp003005
+
+select con.CONTRACT_CODE,SUM(cus_pay.MONEY_ADD) MONEY_ADD
+into #temp1 from MO_CON_PRO_INFO pro
+join MO_CONTRACT_INFO con on pro.CONTRACT_ID = con.CONTRACT_ID
+join V_SEARCH_SUB_PAY_NEW cus_pay on pro.CON_PRO_ID = cus_pay.CON_PRO_ID
+join MO_CUSTOMER_INFO cus on con.C_ID = cus.C_ID
+where  cus_pay.PAY_TYPE <> '4' and cus_pay.COM_NAME like   '%分公司'
+and cus_pay.PAY_TIME >='2012-1-1' and cus_pay.PAY_TIME <'2013-1-1' 
+group by con.CONTRACT_CODE
+--第二步计算 合同及合同签单金额
+select con.CONTRACT_CODE,sum(pro.MONEY_DISCOUNT) as MONEY_DISCOUNT 
+into #temp2 from MO_CON_PRO_INFO pro
+join MO_CONTRACT_INFO con on pro.CONTRACT_ID = con.CONTRACT_ID 
+where  CONTRACT_STATUS  = 0
+group by con.CONTRACT_CODE
+
+---第三步合并合同号的实际到帐及签单金额
+
+select t1.CONTRACT_CODE,t1.MONEY_ADD as MONEY_PAY,t2.MONEY_DISCOUNT 
+into #temp3 from #temp1 t1
+join #temp2 t2 on t1.CONTRACT_CODE = t2.CONTRACT_CODE
+
+-----计算合同最短开通及到期时间
+select con.CONTRACT_CODE,con.MONEY_PAY,con.MONEY_DISCOUNT,
+min(busi.CON_START_TIME) as CON_START_TIME,min(busi.CON_END_TIME) as CON_END_TIME
+ into #temp4 from #temp3 con
+ join dbo.MO_CON_PRO_BUSINESS_INFO busi on con.CONTRACT_CODE = busi.CONTRACT_CODE and busi.SOURCE = '2'
+ group by con.CONTRACT_CODE,con.MONEY_PAY,con.MONEY_DISCOUNT
+---将临时表中的数据插入正式表MO_CONTRACT_INFO_TEST_2015_TIME
+truncate table MO_CONTRACT_INFO_TEST_2015_TIME
+insert into MO_CONTRACT_INFO_TEST_2015_TIME
+select con.CONTRACT_ID,t4.* from #temp4 t4
+join MO_CONTRACT_INFO con on t4.CONTRACT_CODE = con.CONTRACT_CODE
+
+ -----执行存储过程 计算合同每年的服务年限
+
+ truncate table MO_CON_PRO_DAYS_EVERYYEAR_TEST_2013_2015
+-----------------------------------------------------------
+-----------------------------------------------------------
+-----------------------------------------------------------
+--此存储过程需要注意的地方 过程中调用函数 关系到截至2015年9月或是12月 合同服务的期限
+----此存储过程中有对应结束点的时间函数
+ exec P_CON_PRO_DAYS_EVERY_YEAR_NEW_FINAL_2015_2
+
+
+
+----------关联合同对应的服务年限、合同实际到帐
+
+select test2.CONTRACT_CODE,test2.MONEY_PAY,test2.MONEY_DISCOUNT,
+test2.CON_START_TIME,test2.CON_END_TIME,
+test1.BeforeEight_YEAR, test1.EIGHT_YEAR, 
+test1.NINE_YEAR, test1.TEN_YEAR, test1.ELEVEN_YEAR, test1.TWELVE_YEAR, 
+test1.THIRTEEN_YEAR, test1.FOURTEEN_YEAR, test1.FIFTEEN_YEAR
+into #temp003003  
+from MO_CON_PRO_DAYS_EVERYYEAR_TEST_2013_2015 test1 join
+MO_CONTRACT_INFO_TEST_2015_TIME test2 
+on test1.CONTRACT_CODE = test2.CONTRACT_CODE
+--where (test2.MONEY_PAY>=2000
+--or  (test2.MONEY_PAY<2000 and  test2.MONEY_PAY = test2.MONEY_DISCOUNT)
+--or test2.MONEY_PAY <0)
+--select SUM(MONEY_PAY) from #temp003003
+--select top 100 * from #temp003003
+
+
+select b.*,
+b.MONEY_PAY/(datediff(dd,b.CON_START_TIME,b.CON_END_TIME)+1) as EveryMONEY 
+into #temp003004 from #temp003003 b
+------计算合同每年摊销
+
+  select CONTRACT_CODE,
+	EveryMONEY*EIGHT_YEAR as EIGHT_YEAR_MONEY,
+	case when EIGHT_YEAR = 0 then 0
+		 when EIGHT_YEAR <> 0 then MONEY_PAY - EveryMONEY*( EIGHT_YEAR + BeforeEight_YEAR) end as EIGHT_YEAR_SHENGYU,
+	EveryMONEY*NINE_YEAR as NINE_YEAR_MONEY,
+	case when NINE_YEAR = 0 then 0
+		 when NINE_YEAR <> 0 then MONEY_PAY - EveryMONEY*( NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as NINE_YEAR_SHENGYU,
+	EveryMONEY*TEN_YEAR as TEN_YEAR_MONEY,
+	case when TEN_YEAR = 0 then 0
+		 when TEN_YEAR <> 0 then MONEY_PAY - EveryMONEY*( TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as TEN_YEAR_SHENGYU,
+	EveryMONEY*ELEVEN_YEAR as ELEVEN_YEAR_MONEY,
+	case when ELEVEN_YEAR = 0 then 0
+		 when ELEVEN_YEAR <> 0 then MONEY_PAY - EveryMONEY*( ELEVEN_YEAR+TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as ELEVEN_YEAR_SHENGYU,
+	EveryMONEY*TWELVE_YEAR as TWELVE_YEAR_MONEY,
+	case when TWELVE_YEAR = 0 then 0
+		 when TWELVE_YEAR <> 0 then MONEY_PAY - EveryMONEY*( TWELVE_YEAR+ELEVEN_YEAR+TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as TWELVE_YEAR_SHENGYU,
+	EveryMONEY*THIRTEEN_YEAR as THIRTEEN_YEAR_MONEY,
+	case when THIRTEEN_YEAR = 0 then 0
+		 when THIRTEEN_YEAR <> 0 then MONEY_PAY - EveryMONEY*( THIRTEEN_YEAR+TWELVE_YEAR+ELEVEN_YEAR+TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as THIRTEEN_YEAR_SHENGYU,
+	EveryMONEY*FOURTEEN_YEAR as FOURTEEN_YEAR_MONEY,
+	case when FOURTEEN_YEAR = 0 then 0
+		 when FOURTEEN_YEAR <> 0 then MONEY_PAY - EveryMONEY*( FOURTEEN_YEAR+THIRTEEN_YEAR+TWELVE_YEAR+ELEVEN_YEAR+TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as FOURTEEN_YEAR_SHENGYU,
+	EveryMONEY*FIFTEEN_YEAR as FIFTEEN_YEAR_MONEY,
+	case when FIFTEEN_YEAR = 0 then 0
+		 when FIFTEEN_YEAR <> 0 then MONEY_PAY - EveryMONEY*(FIFTEEN_YEAR+ FOURTEEN_YEAR+THIRTEEN_YEAR+TWELVE_YEAR+ELEVEN_YEAR+TEN_YEAR+NINE_YEAR+EIGHT_YEAR + BeforeEight_YEAR) end as FIFTEEN_YEAR_SHENGYU
+into #temp003005
+ from #temp003004
+
+select SUM(EIGHT_YEAR_MONEY) as EIGHT_YEAR_MONEY,SUM(EIGHT_YEAR_SHENGYU) as EIGHT_YEAR_SHENGYU,
+SUM(NINE_YEAR_MONEY) as NINE_YEAR_MONEY,SUM(NINE_YEAR_SHENGYU) as NINE_YEAR_SHENGYU,
+SUM(TEN_YEAR_MONEY) as TEN_YEAR_MONEY,SUM(TEN_YEAR_SHENGYU) as TEN_YEAR_SHENGYU,
+SUM(ELEVEN_YEAR_MONEY) as ELEVEN_YEAR_MONEY,SUM(ELEVEN_YEAR_SHENGYU) as ELEVEN_YEAR_SHENGYU,
+SUM(TWELVE_YEAR_MONEY) as TWELVE_YEAR_MONEY,SUM(TWELVE_YEAR_SHENGYU) as TWELVE_YEAR_SHENGYU,
+SUM(THIRTEEN_YEAR_MONEY) as THIRTEEN_YEAR_MONEY,SUM(THIRTEEN_YEAR_SHENGYU) as THIRTEEN_YEAR_SHENGYU,
+SUM(FOURTEEN_YEAR_MONEY) as FOURTEEN_YEAR_MONEY,SUM(FOURTEEN_YEAR_SHENGYU) as FOURTEEN_YEAR_SHENGYU,
+SUM(FIFTEEN_YEAR_MONEY) as FIFTEEN_YEAR_MONEY,SUM(FIFTEEN_YEAR_SHENGYU) as FIFTEEN_YEAR_SHENGYU
+ from #temp003005
+
+
+
+

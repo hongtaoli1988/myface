@@ -1,0 +1,42 @@
+        -----建立表倒入数据	
+	select * from MO_CAIWU_DATA_EVERY_MONTH_TEMP
+	select * from MO_CAIWU_DATA_EVERY_MONTH	where FLAG = '0'
+	--插入数据
+	insert into MO_CAIWU_DATA_EVERY_MONTH
+	select a.*,0 as MONEY_MIS,'0' as FALG from MO_CAIWU_DATA_EVERY_MONTH_TEMP a
+	order by YR,MO
+	--清除表中数据
+	truncate table MO_CAIWU_DATA_EVERY_MONTH_TEMP
+	--truncate table MO_CAIWU_DATA_EVERY_MONTH
+	-----执行存储过程
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2008-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2009-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2010-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2011-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2012-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2013-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2014-1-1'
+	exec P_MO_CUS_PAY_INFO_HEDUI_GIVE_CAIWU_EVERY_MONTH '北京分公司','2015-1-1'
+	
+	--核对成功
+	select * from MO_CAIWU_DATA_EVERY_MONTH where COM_NAME = '北京分公司' and FLAG = '1' 
+    --核对失败
+	select * from MO_CAIWU_DATA_EVERY_MONTH where COM_NAME = '北京分公司' and FLAG = '2'
+	--update MO_CAIWU_DATA_EVERY_MONTH set FLAG = '0'
+    --核对成功 插入流水
+	select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_MONTH where COM_NAME = '北京分公司' and  IF_HEDUI_SUCCESS = '1'
+    --核对失败 插入流水
+    select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_MONTH where COM_NAME = '北京分公司' and  IF_HEDUI_SUCCESS = '2'
+    --truncate table MO_CUS_PAY_INFO_HEDUI_BY_EVERY_MONTH 
+    
+    --FINAL 导出数据语句 
+    --核对结果 	
+    select temp.COM_NAME,temp.YR,temp.MO,temp.MONEY_CAIWU,temp.MONEY_MIS,temp.FLAG,
+    case when temp.FLAG = 1 then '核对成功'
+		 else '核对失败' end as 状态
+     from MO_CAIWU_DATA_EVERY_MONTH temp 
+    where COM_NAME = '北京分公司' order by YR,MO
+    --核对后的详细
+    select * from MO_CUS_PAY_INFO_HEDUI_BY_EVERY_MONTH where COM_NAME = '北京分公司' order by YR,MO
+    
+    
